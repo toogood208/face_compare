@@ -5,8 +5,6 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'dart:io';
 import 'package:screen_brightness/screen_brightness.dart';
 
-enum LivenessStep { align, blink, smile, done }
-
 class FaceCaptureScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
   final String title;
@@ -30,10 +28,6 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   Size _imageSize = Size.zero;
   bool _isFrontCamera = true;
   double? _previousBrightness; // Store original brightness
-
-  bool _blinked = false;
-  bool _smileConfirmed = false;
-  LivenessStep _currentStep = LivenessStep.align;
 
   // For dynamic rotation
   final Map<DeviceOrientation, int> _orientations = {
@@ -163,43 +157,6 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
             );
 
             _faceAligned = _checkSimpleAlignment(transformedRect, screenSize);
-
-            // -----------------------------
-            // NEW: Step progression logic
-            // -----------------------------
-            if (_faceAligned) {
-              switch (_currentStep) {
-                case LivenessStep.align:
-                  _currentStep = LivenessStep.blink;
-                  break;
-
-                case LivenessStep.blink:
-                  final leftEyeOpen = face.leftEyeOpenProbability ?? 1.0;
-                  final rightEyeOpen = face.rightEyeOpenProbability ?? 1.0;
-
-                  if (!_blinked && leftEyeOpen < 0.4 && rightEyeOpen < 0.4) {
-                    _blinked = true; // eyes closed
-                  }
-
-                  if (_blinked && leftEyeOpen > 0.6 && rightEyeOpen > 0.6) {
-                    _currentStep = LivenessStep.smile;
-                  }
-                  break;
-
-                case LivenessStep.smile:
-                  final smileProb = face.smilingProbability ?? 0.0;
-                  // Only proceed if a NEW smile happens
-                  if (!_smileConfirmed && smileProb > 0.7) {
-                    _smileConfirmed = true;
-                    _currentStep = LivenessStep.done;
-                  }
-                  break;
-
-                case LivenessStep.done:
-                  // Ready to capture
-                  break;
-              }
-            }
           } else {
             _faceAligned = false;
           }
@@ -211,15 +168,12 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   }
 
   String _getInstruction() {
-    switch (_currentStep) {
-      case LivenessStep.align:
-        return "Align your face in the oval";
-      case LivenessStep.blink:
-        return "Please blink 👀";
-      case LivenessStep.smile:
-        return "Now, give us a smile 😁";
-      case LivenessStep.done:
-        return "Perfect! Tap the button to capture";
+    if (!_faceDetected) {
+      return "Position your face in the frame";
+    } else if (!_faceAligned) {
+      return "Align your face in the oval";
+    } else {
+      return "Perfect! Tap the button to capture";
     }
   }
 
@@ -430,10 +384,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                     right: 0,
                     child: Center(
                       child: GestureDetector(
-                        onTap:
-                            _currentStep == LivenessStep.done
-                                ? _captureImage
-                                : null,
+                        onTap: _faceAligned ? _captureImage : null,
                         child: Container(
                           width: 80,
                           height: 80,
